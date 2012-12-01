@@ -693,7 +693,7 @@ static bool ScheduleRun(Policy **policy, ExecConfig *exec_config, const ReportCo
 
         DeleteAllScope();
 
-        strcpy(VDOMAIN, "undefinded.domain");
+        strcpy(VDOMAIN, "undefined.domain");
         POLICY_SERVER[0] = '\0';
 
         VNEGHEAP = NULL;
