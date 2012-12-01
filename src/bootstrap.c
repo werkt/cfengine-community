@@ -62,7 +62,7 @@ static bool BootstrapAllowed(void)
 
 static bool BootstrapAllowed(void)
 {
-    return IsPrivileged();
+    return IsPrivileged() || getenv("CFENGINE_UNPRIVILEGED_BOOTSTRAP");
 }
 
 #endif
