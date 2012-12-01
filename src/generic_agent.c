@@ -635,12 +635,17 @@ void InitializeGA(const ReportContext *report_context)
 static void Cf3ParseFiles(Policy *policy, bool check_not_writable_by_others, const ReportContext *report_context)
 {
     Rlist *rp, *sl;
+    bool outsideRepo = false;
+    struct timeval ptm;
 
     PARSING = true;
 
-    PROMISETIME = time(NULL);
+    gettimeofday(&ptm, NULL);
+    PROMISETIME = ptm.tv_sec;
 
     PolicySetNameSpace(policy, "default");    
+
+    outsideRepo = IsFileOutsideDefaultRepository(VINPUTFILE);
 
     Cf3ParseFile(policy, VINPUTFILE, check_not_writable_by_others);
 
@@ -692,6 +697,44 @@ static void Cf3ParseFiles(Policy *policy, bool check_not_writable_by_others, con
     HashVariables(policy, NULL, report_context);
 
     PARSING = false;
+
+    if (!outsideRepo)
+    {
+        char filename[CF_MAXVARSIZE];
+        int fd;
+
+        if (MINUSF)
+        {
+            snprintf(filename, CF_MAXVARSIZE, "%s/state/%s_parsed_%s", CFWORKDIR, CF_AGENTTYPES[THIS_AGENT_TYPE], CanonifyName(VINPUTFILE));
+            MapName(filename);
+        }
+        else
+        {
+            snprintf(filename, CF_MAXVARSIZE, "%s/state/%s_parsed_promises", CFWORKDIR, CF_AGENTTYPES[THIS_AGENT_TYPE]);
+            MapName(filename);
+        }
+
+        MakeParentDirectory(filename, true, report_context);
+
+        if ((fd = creat(filename, 0600)) != -1)
+        {
+            FILE *fp = fdopen(fd, "w");
+            struct timeval times[2];
+
+            char timebuf[26];
+
+            fprintf(fp, "%s", cf_strtimestamp_local(PROMISETIME, timebuf));
+            fclose(fp);
+            times[0] = ptm;
+            times[1] = ptm;
+            utimes(filename, times);
+            CfOut(cf_verbose, "", " -> Caching the state of parsing\n");
+        }
+        else
+        {
+            CfOut(cf_verbose, "creat", " -> Failed to cache the state of parsing\n");
+        }
+    }
 }
 
 /*******************************************************************/
@@ -759,6 +802,32 @@ int NewPromiseProposals()
     {
         CfOut(cf_verbose, "stat", "There is no readable input file at %s", VINPUTFILE);
         return true;
+    }
+
+    if (sb.st_mtime > PROMISETIME)
+    {
+        CfOut(cf_verbose, "", " -> Promises seem to change");
+        return true;
+    }
+
+    if (MINUSF)
+    {
+        snprintf(filename, CF_MAXVARSIZE, "%s/state/%s_parsed_%s", CFWORKDIR, CF_AGENTTYPES[THIS_AGENT_TYPE], CanonifyName(VINPUTFILE));
+        MapName(filename);
+    }
+    else
+    {
+        snprintf(filename, CF_MAXVARSIZE, "%s/state/%s_parsed_promises", CFWORKDIR, CF_AGENTTYPES[THIS_AGENT_TYPE]);
+        MapName(filename);
+    }
+
+    if (stat(filename, &sb) != -1)
+    {
+        PROMISETIME = sb.st_mtime;
+    }
+    else
+    {
+        PROMISETIME = 0;
     }
 
     if (sb.st_mtime > PROMISETIME)
